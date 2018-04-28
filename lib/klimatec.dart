@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'utils/utils.dart' as Utils;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Klimatec extends StatefulWidget {
   @override
@@ -13,15 +14,22 @@ class Klimatec extends StatefulWidget {
 class _KlimatecState extends State<Klimatec> {
   String _city;
 
-  @override
-  void initState() {
-    super.initState();
-    debugPrint('test');
+//  @override
+//  void initState() {
+//    super.initState();
+//    _loadSavedCity();
+//  }
+
+  Future<String> _loadSavedCity() async {
+    // obtain shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('city') ?? Utils.defaultCity;
   }
 
-  Future<Map> getWeatherInfo(String city) async {
+  Future<Map> getWeatherInfo() async {
+    _city = await _loadSavedCity();
     String url =
-        "http://api.openweathermap.org/data/2.5/weather?q=$city&appid=${Utils
+        "http://api.openweathermap.org/data/2.5/weather?q=$_city&appid=${Utils
         .appId}&units=metric";
     http.Response response = await http.get(url);
     return json.decode(response.body);
@@ -35,18 +43,21 @@ class _KlimatecState extends State<Klimatec> {
     }));
 
     if (result != null && result.containsKey('city')) {
+      final prefs = await SharedPreferences.getInstance();
       // check if no city is chosen
       if (result['city'] == "") {
-        _city = null;
+        _city = Utils.defaultCity;
+        prefs.setString('city', Utils.defaultCity);
       } else {
         _city = result['city'];
+        prefs.setString('city', result['city']);
       }
     }
   }
 
   Widget updateTempInfo(String city) {
     return new FutureBuilder(
-        future: getWeatherInfo(city == null ? Utils.defaultCity : city),
+        future: getWeatherInfo(),
         builder: (BuildContext context, AsyncSnapshot<Map> snapshot) {
           if (snapshot.hasData) {
             Map content = snapshot.data;
@@ -56,7 +67,7 @@ class _KlimatecState extends State<Klimatec> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   new ListTile(
-                    title: new Text('${content['main']['temp'].toString()} °C',
+                    title: new Text('${content['main']['temp'].toStringAsFixed(1)} °C',
                         style: tempStyle()),
                     subtitle: new Text(
                       'Humidity: ${content['main']['humidity'].toString()} \n'
@@ -69,6 +80,26 @@ class _KlimatecState extends State<Klimatec> {
                     ),
                   )
                 ],
+              ),
+            );
+          } else {
+            return new Container();
+          }
+        });
+  }
+
+  Widget _getCity() {
+    return new FutureBuilder(
+        future: _loadSavedCity(),
+        builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
+          if (snapshot.hasData) {
+            final String city = snapshot.data;
+            return new Container(
+              alignment: Alignment.topRight,
+              margin: const EdgeInsets.fromLTRB(0.0, 10.0, 20.0, 10.0),
+              child: new Text(
+                city,
+                style: cityStyle(),
               ),
             );
           } else {
@@ -101,14 +132,7 @@ class _KlimatecState extends State<Klimatec> {
               fit: BoxFit.fill,
             ),
           ),
-          new Container(
-            alignment: Alignment.topRight,
-            margin: const EdgeInsets.fromLTRB(0.0, 10.0, 20.0, 10.0),
-            child: new Text(
-              '${_city != null ? _city : Utils.defaultCity}',
-              style: cityStyle(),
-            ),
-          ),
+          _getCity(),
           new Container(
             alignment: Alignment.center,
             child: new Image.asset("assets/light_rain.png"),
